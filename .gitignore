@@ -98,8 +98,9 @@ frontend/.cache/
 tmp/
 temp/
 
-# CSV data files (optional - uncomment if you want to ignore data)
-# *.csv
+# CSV data files (large data files should not be in git)
+*.csv
+transformer_ready.csv
 
 # Backup files
 *.backup
