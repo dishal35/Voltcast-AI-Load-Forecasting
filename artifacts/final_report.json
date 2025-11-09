@@ -1,0 +1,116 @@
+{
+    "config": {
+        "DATA_PATH": "/kaggle/input/trans1/transformer_ready.csv",
+        "TRAIN_START": "2019-01-01",
+        "TRAIN_END": "2021-12-31",
+        "VAL_END": "2022-12-31",
+        "TARGET": "electricity_demand",
+        "SEQ_LENGTH": 168,
+        "HORIZON": 24,
+        "BATCH_SIZE": 128,
+        "EPOCHS": 50,
+        "LEARNING_RATE": 0.001,
+        "XGB_N_ESTIMATORS": 1000,
+        "XGB_MAX_DEPTH": 8,
+        "XGB_LEARNING_RATE": 0.01,
+        "XGB_EARLY_STOPPING": 50,
+        "RANDOM_SEED": 42
+    },
+    "xgb_test_metrics": {
+        "MAE": 2.015483856201172,
+        "RMSE": 3.8871757984161377,
+        "MAPE": 0.4124832805246115
+    },
+    "hybrid_test_metrics": {
+        "MAE": 2.015563488006592,
+        "RMSE": 3.8876259326934814,
+        "MAPE": 0.41252165101468563
+    },
+    "improvement": {
+        "MAE": -0.003951001781388186,
+        "RMSE": -0.01157998267444782,
+        "MAPE": -0.009302314029639385
+    },
+    "top_features": [
+        {
+            "feature": "hour_cos",
+            "importance": 0.32605767250061035
+        },
+        {
+            "feature": "solar_generation",
+            "importance": 0.26084768772125244
+        },
+        {
+            "feature": "hour_sin",
+            "importance": 0.18168167769908905
+        },
+        {
+            "feature": "temp_solar_interaction",
+            "importance": 0.050678517669439316
+        },
+        {
+            "feature": "demand_diff_1h",
+            "importance": 0.04472984001040459
+        },
+        {
+            "feature": "demand_diff_24h",
+            "importance": 0.03850545734167099
+        },
+        {
+            "feature": "demand_lag_24",
+            "importance": 0.02200552076101303
+        },
+        {
+            "feature": "demand_lag_1",
+            "importance": 0.019701791927218437
+        },
+        {
+            "feature": "demand_roll_q75_12",
+            "importance": 0.018037429079413414
+        },
+        {
+            "feature": "demand_lag_48",
+            "importance": 0.013646887615323067
+        },
+        {
+            "feature": "fft_amp_1_168",
+            "importance": 0.0034324645530432463
+        },
+        {
+            "feature": "demand_diff2_1h",
+            "importance": 0.002976049203425646
+        },
+        {
+            "feature": "demand_roll_std_6",
+            "importance": 0.0017320404294878244
+        },
+        {
+            "feature": "demand_lag_6",
+            "importance": 0.0014425568515434861
+        },
+        {
+            "feature": "demand_lag_2",
+            "importance": 0.0014243593905121088
+        },
+        {
+            "feature": "demand_roll_q25_6",
+            "importance": 0.0013901232741773129
+        },
+        {
+            "feature": "demand_roll_mean_6",
+            "importance": 0.0007937466725707054
+        },
+        {
+            "feature": "temperature",
+            "importance": 0.0007880325429141521
+        },
+        {
+            "feature": "demand_roll_q75_6",
+            "importance": 0.0007065710378810763
+        },
+        {
+            "feature": "demand_roll_q25_24",
+            "importance": 0.0006643556989729404
+        }
+    ]
+}

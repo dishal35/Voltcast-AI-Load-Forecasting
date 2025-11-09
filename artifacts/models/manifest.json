@@ -1,0 +1,87 @@
+{
+  "model_store_version": "1.0",
+  "generated_at": "2025-11-08T13:00:00Z",
+  "models": {
+    "hourly": {
+      "name": "hybrid_transformer_xgboost",
+      "description": "Hybrid model combining XGBoost baseline with Transformer residual correction",
+      "transformer_path": "artifacts/transformer_best.keras",
+      "baseline_path": "artifacts/xgboost_baseline.json",
+      "scaler_path": "artifacts/transformer_scaler.pkl",
+      "residual_scaler_path": null,
+      "residual_scaler_note": "Residuals are not scaled - transformer predicts raw residuals that are added directly to baseline",
+      "feature_order_path": "artifacts/feature_order.json",
+      "residual_stats_path": "artifacts/residual_stats.pkl",
+      "seq_len": 168,
+      "horizon": 24,
+      "n_features": 59,
+      "residuals_scaled": false,
+      "training_config": {
+        "train_start": "2019-01-01",
+        "train_end": "2021-12-31",
+        "val_end": "2022-12-31",
+        "batch_size": 128,
+        "epochs": 50,
+        "learning_rate": 0.001,
+        "random_seed": 42
+      },
+      "training_date": "2025-11-07T20:44:29.901404",
+      "performance_metrics": {
+        "baseline": {
+          "mae": 2.015483856201172,
+          "rmse": 3.8871757984161377,
+          "mape": 0.4124832805246115
+        },
+        "hybrid": {
+          "mae": 2.015563488006592,
+          "rmse": 3.8876259326934814,
+          "mape": 0.41252165101468563
+        },
+        "improvement": {
+          "mae": -0.003951001781388186,
+          "rmse": -0.01157998267444782,
+          "mape": -0.009302314029639385
+        }
+      },
+      "metrics_path": "artifacts/final_report.json"
+    },
+    "weekly": {
+      "name": "sarimax_daily",
+      "description": "SARIMAX model for weekly/daily forecasting",
+      "path": "artifacts/sarimax_daily.pkl",
+      "training_date": "2025-11-08T09:36:20.624135",
+      "metrics_path": "artifacts/final_report.json"
+    }
+  },
+  "verification": {
+    "golden_samples_path": "artifacts/golden_samples.json",
+    "verify_script": "scripts/verify_run.py",
+    "tolerance_mw": 0.5,
+    "last_verified": null
+  },
+  "dependencies": {
+    "tensorflow": "2.16.2",
+    "tf_keras": "2.16.0",
+    "xgboost": ">=2.0.0",
+    "scikit_learn": ">=1.4.0",
+    "sklearn_version": "1.6.1",
+    "sklearn_pickle_warning": "RESOLVED - Scaler re-pickled with sklearn 1.6.1"
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "./demand_forecast.db",
+    "tables": [
+      "hourly_actuals",
+      "weather_cache",
+      "forecast_cache"
+    ]
+  },
+  "weather": {
+    "provider": "openweathermap",
+    "api_endpoint": "https://api.openweathermap.org/data/2.5/forecast",
+    "coords": "28.6139,77.2090",
+    "cache_ttl_seconds": 600
+  },
+  "residuals_by_horizon_path": "artifacts/residuals_by_horizon.pkl",
+  "residuals_by_horizon_json_path": "artifacts/residuals_by_horizon.json"
+}
