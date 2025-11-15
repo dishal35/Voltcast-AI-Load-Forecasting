@@ -13,7 +13,7 @@ export default function Footer() {
         </a>
       </p>
       <p className="mt-1 text-xs">
-        Hybrid Transformer-XGBoost Model • 210k+ Historical Records • Real-time Predictions
+        Hybrid Transformer Model • 210k+ Historical Records • Real-time Predictions
       </p>
     </footer>
   );

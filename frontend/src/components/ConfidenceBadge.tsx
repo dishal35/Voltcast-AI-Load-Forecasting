@@ -4,26 +4,26 @@ interface ConfidenceBadgeProps {
 }
 
 export default function ConfidenceBadge({ confidenceScore, ciWidth }: ConfidenceBadgeProps) {
-  // Calculate confidence from CI width if score not provided
+  // Use provided confidence score (0-100) or calculate from CI width
   let score = confidenceScore;
   if (score === undefined && ciWidth !== undefined) {
     // Smaller CI = higher confidence
     // Normalize: assume CI width of 20 MW = 0.5 confidence
-    score = Math.max(0, Math.min(1, 1 - (ciWidth / 40)));
+    score = Math.max(0, Math.min(100, 100 - (ciWidth / 40) * 100));
   }
 
   if (score === undefined) {
     return null;
   }
 
-  const percentage = (score * 100).toFixed(0);
+  const percentage = score.toFixed(1);
   let color = 'bg-red-100 text-red-700';
   let label = 'Low';
 
-  if (score >= 0.7) {
+  if (score >= 90) {
     color = 'bg-green-100 text-green-700';
     label = 'High';
-  } else if (score >= 0.4) {
+  } else if (score >= 85) {
     color = 'bg-yellow-100 text-yellow-700';
     label = 'Medium';
   }
@@ -40,7 +40,7 @@ export default function ConfidenceBadge({ confidenceScore, ciWidth }: Confidence
       <div className="mt-2 w-full bg-slate-200 rounded-full h-2">
         <div
           className="bg-teal-500 h-2 rounded-full transition-all duration-300"
-          style={{ width: `${percentage}%` }}
+          style={{ width: `${Math.min(100, score)}%` }}
         />
       </div>
     </div>

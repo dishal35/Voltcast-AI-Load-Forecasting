@@ -27,7 +27,7 @@ export default function Header() {
           ⚡ Voltcast-AI — 24hr Load Forecast (Demo)
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Hybrid prediction = XGBoost baseline + Transformer residual
+          Hybrid prediction
         </p>
       </div>
       <div className="flex gap-2">
@@ -36,7 +36,7 @@ export default function Header() {
         ) : (
           <>
             <span className="px-3 py-1 bg-teal-100 text-teal-700 text-xs rounded-full font-medium">
-              Model: {metadata?.models?.hourly?.name || 'hybrid_transformer_xgboost'}
+              Model: {metadata?.models?.hourly?.name || 'hybrid_transformer'}
             </span>
             <span className="px-3 py-1 bg-green-100 text-green-700 text-xs rounded-full font-medium">
               Status: Healthy

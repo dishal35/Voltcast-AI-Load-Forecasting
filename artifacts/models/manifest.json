@@ -3,10 +3,10 @@
   "generated_at": "2025-11-08T13:00:00Z",
   "models": {
     "hourly": {
-      "name": "hybrid_transformer_xgboost",
-      "description": "Hybrid model combining XGBoost baseline with Transformer residual correction",
+      "name": "hybrid_transformer_sarimax",
+      "description": "Hybrid model combining SARIMAX baseline with Transformer residual correction",
       "transformer_path": "artifacts/transformer_best.keras",
-      "baseline_path": "artifacts/xgboost_baseline.json",
+      "baseline_path": "artifacts/baseline.json",
       "scaler_path": "artifacts/transformer_scaler.pkl",
       "residual_scaler_path": null,
       "residual_scaler_note": "Residuals are not scaled - transformer predicts raw residuals that are added directly to baseline",

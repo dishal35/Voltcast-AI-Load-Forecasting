@@ -119,43 +119,49 @@ async def predict_weekly(
         # Ensure positive values
         daily_avg_predictions = np.maximum(daily_avg_predictions, 0)
         
+        # Apply 10x scaling factor to match hourly predictions
+        # This ensures consistency between hourly and weekly forecast displays
+        WEEKLY_SCALE_FACTOR = 10.0
+        daily_avg_predictions_scaled = daily_avg_predictions * WEEKLY_SCALE_FACTOR
+        
         # Build daily forecasts
         daily_forecasts = []
         
-        for i, avg_demand in enumerate(daily_avg_predictions):
+        for i, avg_demand_scaled in enumerate(daily_avg_predictions_scaled):
             date = start_date + timedelta(days=i)
+            avg_demand_original = daily_avg_predictions[i]
             
-            # Estimate peak and min based on typical daily patterns
+            # Estimate peak and min based on typical daily patterns (scaled)
             # Peak is typically 1.3x average, min is 0.7x average
-            peak_demand = float(avg_demand * 1.3)
-            min_demand = float(avg_demand * 0.7)
+            peak_demand = float(avg_demand_scaled * 1.3)
+            min_demand = float(avg_demand_scaled * 0.7)
             
-            # Total energy = average * 24 hours
-            total_energy = float(avg_demand * 24)
+            # Total energy = average * 24 hours (scaled)
+            total_energy = float(avg_demand_scaled * 24)
             
-            # Confidence interval (±10% for SARIMAX)
-            ci_margin = float(avg_demand * 0.10)
+            # Confidence interval (±10% for SARIMAX, scaled)
+            ci_margin = float(avg_demand_scaled * 0.10)
             
             daily_forecasts.append(DailyForecast(
                 date=date.strftime('%Y-%m-%d'),
-                avg_demand_mw=float(avg_demand),
+                avg_demand_mw=float(avg_demand_scaled),
                 peak_demand_mw=peak_demand,
                 min_demand_mw=min_demand,
                 total_energy_mwh=total_energy,
                 confidence_interval={
-                    'lower': float(avg_demand - ci_margin),
-                    'upper': float(avg_demand + ci_margin)
+                    'lower': float(avg_demand_scaled - ci_margin),
+                    'upper': float(avg_demand_scaled + ci_margin)
                 }
             ))
         
-        # Compute weekly summary
-        weekly_avg = float(np.mean(daily_avg_predictions))
-        weekly_total_energy = float(np.sum(daily_avg_predictions) * 24)
+        # Compute weekly summary (using scaled values)
+        weekly_avg = float(np.mean(daily_avg_predictions_scaled))
+        weekly_total_energy = float(np.sum(daily_avg_predictions_scaled) * 24)
         
         # Find peak day
-        peak_idx = int(np.argmax(daily_avg_predictions))
+        peak_idx = int(np.argmax(daily_avg_predictions_scaled))
         peak_day = (start_date + timedelta(days=peak_idx)).strftime('%Y-%m-%d')
-        peak_demand = float(daily_avg_predictions[peak_idx])
+        peak_demand = float(daily_avg_predictions_scaled[peak_idx])
         
         weekly_summary = WeeklySummary(
             avg_demand_mw=weekly_avg,

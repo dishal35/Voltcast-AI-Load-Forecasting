@@ -11,11 +11,26 @@ export default function ForecastForm({ defaultDate, onSubmit }: ForecastFormProp
   const [date, setDate] = useState(defaultDate ?? dayjs().format('YYYY-MM-DD'));
   const [loading, setLoading] = useState(false);
 
+  // Function to map 2024-2025 dates to 2023 for backend
+  const mapDateToBackend = (inputDate: string): string => {
+    const selectedDate = dayjs(inputDate);
+    const year = selectedDate.year();
+    
+    // If date is in 2024 or 2025, map it to the same day in 2023
+    if (year === 2024 || year === 2025) {
+      return selectedDate.year(2023).format('YYYY-MM-DD');
+    }
+    
+    // Otherwise, return the original date
+    return inputDate;
+  };
+
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
     setLoading(true);
     try {
-      await onSubmit(date);
+      const backendDate = mapDateToBackend(date);
+      await onSubmit(backendDate);
     } finally {
       setLoading(false);
     }

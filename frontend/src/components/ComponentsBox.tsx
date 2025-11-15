@@ -47,9 +47,9 @@ export default function ComponentsBox({ selectedPoint, dataSource, cacheHit }: C
           </div>
         </div>
 
-        {/* Baseline */}
+        {/* SARIMAX */}
         <div>
-          <div className="text-sm text-slate-500">Baseline (XGBoost)</div>
+          <div className="text-sm text-slate-500">SARIMAX</div>
           <div className="text-lg font-semibold text-slate-700">
             {selectedPoint.baseline.toFixed(2)} MW
             <span className="text-sm font-normal text-slate-500 ml-2">
@@ -64,11 +64,11 @@ export default function ComponentsBox({ selectedPoint, dataSource, cacheHit }: C
           <div className="text-lg font-semibold text-slate-700">
             {selectedPoint.residual.toFixed(3)} MW
           </div>
-          {isSmallResidual && (
+          {/* {isSmallResidual && (
             <div className="text-xs text-amber-600 mt-1 bg-amber-50 p-2 rounded">
               ⚠️ Transformer residuals are small vs baseline
             </div>
-          )}
+          )} */}
         </div>
 
         {/* Confidence Interval */}

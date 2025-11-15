@@ -26,6 +26,7 @@ interface ChartDataPoint {
   ci_lower: number;
   ci_upper: number;
   residual: number;
+  confidence_score?: number;
   index: number;
 }
 
@@ -37,17 +38,22 @@ const CustomTooltip = ({ active, payload }: any) => {
         <p className="text-sm font-semibold text-slate-800 mb-2">{data.fullTime}</p>
         <div className="space-y-1 text-xs">
           <p className="text-teal-600">
-            <span className="font-medium">Hybrid:</span> {data.prediction.toFixed(2)} MW
+            <span className="font-medium">Hybrid:</span> {data.prediction.toFixed(1)} MW
           </p>
           <p className="text-slate-600">
-            <span className="font-medium">Baseline:</span> {data.baseline.toFixed(2)} MW
+            <span className="font-medium">SARIMAX:</span> {data.baseline.toFixed(1)} MW
           </p>
           <p className="text-slate-500">
-            <span className="font-medium">Residual:</span> {data.residual.toFixed(3)} MW
+            <span className="font-medium">Residual:</span> {data.residual.toFixed(2)} MW
           </p>
           <p className="text-slate-400">
             <span className="font-medium">CI:</span> [{data.ci_lower.toFixed(1)}, {data.ci_upper.toFixed(1)}] MW
           </p>
+          {data.confidence_score && (
+            <p className="text-green-600">
+              <span className="font-medium">Confidence:</span> {data.confidence_score.toFixed(1)}%
+            </p>
+          )}
         </div>
       </div>
     );
@@ -64,6 +70,7 @@ export default function ForecastChart({ data, selectedHourIndex, onSelectHour }:
     ci_lower: pred.ci_lower,
     ci_upper: pred.ci_upper,
     residual: pred.residual,
+    confidence_score: pred.confidence_score,
     index,
   }));
 
@@ -130,7 +137,7 @@ export default function ForecastChart({ data, selectedHourIndex, onSelectHour }:
               strokeWidth={2}
               strokeDasharray="5 5"
               dot={false}
-              name="Baseline (XGBoost)"
+              name="SARIMAX"
             />
             <Line
               type="monotone"

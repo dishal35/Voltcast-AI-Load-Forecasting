@@ -35,14 +35,18 @@ class ConfidenceInterval(BaseModel):
 
 class PredictionComponents(BaseModel):
     """Prediction components model."""
-    baseline: float = Field(..., description="XGBoost baseline prediction (MW)")
+    baseline: float = Field(..., description="SARIMAX baseline prediction (MW)")
     residual: float = Field(..., description="Transformer residual correction (MW)")
+    baseline_mw: Optional[float] = Field(None, description="SARIMAX baseline prediction (original MW)")
+    residual_mw: Optional[float] = Field(None, description="Transformer residual correction (original MW)")
 
 
 class PredictionResponse(BaseModel):
     """Response model for single prediction."""
     timestamp: str = Field(..., description="Prediction timestamp (ISO format)")
     prediction: float = Field(..., description="Hybrid prediction (MW)")
+    prediction_mw: Optional[float] = Field(None, description="Hybrid prediction (original MW)")
+    confidence_score: float = Field(..., description="Confidence score (0-100%)")
     confidence_interval: ConfidenceInterval
     components: Optional[PredictionComponents] = None
     metadata: Optional[Dict[str, Any]] = Field(None, description="Prediction metadata")
@@ -63,9 +67,13 @@ class HorizonPredictionResponse(BaseModel):
     timestamp: str = Field(..., description="Starting timestamp (ISO format)")
     horizon: int = Field(..., description="Number of hours predicted")
     predictions: List[float] = Field(..., description="Hybrid predictions for each hour (MW)")
+    predictions_mw: Optional[List[float]] = Field(None, description="Hybrid predictions for each hour (original MW)")
+    confidence_scores: List[float] = Field(..., description="Confidence scores for each hour (0-100%)")
     confidence_intervals: List[ConfidenceInterval] = Field(..., description="Confidence intervals for each hour")
-    baselines: List[float] = Field(..., description="XGBoost baselines for each hour (MW)")
+    baselines: List[float] = Field(..., description="SARIMAX baselines for each hour (MW)")
     residuals: List[float] = Field(..., description="Transformer residuals for each hour (MW)")
+    baselines_mw: Optional[List[float]] = Field(None, description="SARIMAX baselines for each hour (original MW)")
+    residuals_mw: Optional[List[float]] = Field(None, description="Transformer residuals for each hour (original MW)")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Prediction metadata")
 
 

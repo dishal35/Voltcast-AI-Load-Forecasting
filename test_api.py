@@ -50,7 +50,7 @@ def test_predict():
         print(f"Prediction: {data['prediction']:.2f} MW")
         print(f"Confidence Interval: [{data['confidence_interval']['lower']:.2f}, {data['confidence_interval']['upper']:.2f}] MW")
         if 'components' in data:
-            print(f"Baseline: {data['components']['baseline']:.2f} MW")
+            print(f"SARIMAX: {data['components']['baseline']:.2f} MW")
             print(f"Residual: {data['components']['residual']:.4f} MW")
     else:
         print(f"Error: {response.text}")
@@ -76,7 +76,7 @@ def test_predict_horizon():
     if response.status_code == 200:
         data = response.json()
         print(f"Horizon: {data['horizon']} hours")
-        print(f"Baseline: {data['baseline']:.2f} MW")
+        print(f"SARIMAX: {data['baseline']:.2f} MW")
         print(f"Predictions: {[f'{p:.2f}' for p in data['predictions'][:3]]}... MW")
         print(f"Residuals: {[f'{r:.4f}' for r in data['residuals'][:3]]}...")
     else:

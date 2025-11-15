@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from .services.model_loader import ModelLoader
 from .services.predictor import HybridPredictor
-from .routes import predictions, status
+from .routes import predictions, status, chatbot
 
 # Load environment variables
 load_dotenv()
@@ -126,6 +126,7 @@ async def shutdown_event():
 # Include routers
 app.include_router(predictions.router)
 app.include_router(status.router)
+app.include_router(chatbot.router)
 
 # Import and include weekly router (model_loader set in startup_event)
 from .routes import weekly

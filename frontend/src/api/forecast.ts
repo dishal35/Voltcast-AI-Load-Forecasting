@@ -54,12 +54,16 @@ export async function getForecast(timestamp: string, horizon: number = 24): Prom
 
   // Transform response to match expected format
   const data = response.data;
+  console.log('API Response data:', data);
+  console.log('Confidence scores from API:', data.confidence_scores);
   
   // Handle the actual API response format
   const predictions: PredictionPoint[] = data.predictions.map((pred: number, index: number) => {
     const ci = data.confidence_intervals[index];
     const residual = data.residuals[index];
     const baseline = data.baselines ? data.baselines[index] : (data.baseline || pred);
+    const confidence_score = data.confidence_scores ? data.confidence_scores[index] : undefined;
+    console.log(`Mapping prediction ${index}: confidence_score = ${confidence_score}`);
     const startTime = new Date(data.timestamp);
     startTime.setHours(startTime.getHours() + index);
     
@@ -70,7 +74,7 @@ export async function getForecast(timestamp: string, horizon: number = 24): Prom
       residual: residual || 0,
       ci_lower: ci?.lower || pred - 7.6,
       ci_upper: ci?.upper || pred + 7.6,
-      confidence_score: undefined,
+      confidence_score: confidence_score,
       cache_hit: data.metadata?.cache_hit || false,
     };
   });

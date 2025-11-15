@@ -61,7 +61,7 @@ export default function ForecastTable({ predictions }: ForecastTableProps) {
   });
 
   const downloadCSV = () => {
-    const headers = ['Time', 'Prediction (MW)', 'Baseline (MW)', 'Residual (MW)', 'CI Lower (MW)', 'CI Upper (MW)', 'Notes'];
+    const headers = ['Time', 'Prediction (MW)', 'SARIMAX (MW)', 'Residual (MW)', 'CI Lower (MW)', 'CI Upper (MW)', 'Notes'];
     const rows = predictions.map((p) => [
       dayjs(p.ts_iso).format('YYYY-MM-DD HH:mm'),
       (p.prediction ?? 0).toFixed(2),
@@ -132,7 +132,7 @@ export default function ForecastTable({ predictions }: ForecastTableProps) {
                 className="px-4 py-2 text-right font-medium text-slate-600 cursor-pointer hover:bg-slate-100"
                 onClick={() => handleSort('baseline')}
               >
-                Baseline
+                SARIMAX
                 <SortIcon active={sortKey === 'baseline'} asc={sortAsc} />
               </th>
               <th

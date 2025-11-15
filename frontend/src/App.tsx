@@ -59,6 +59,15 @@ function App() {
     ? forecastData.predictions.reduce((sum, p) => sum + (p.ci_upper - p.ci_lower), 0) / forecastData.predictions.length
     : undefined;
 
+  const avgConfidenceScore = forecastData
+    ? forecastData.predictions.reduce((sum, p) => {
+        console.log('Confidence score for prediction:', p.confidence_score);
+        return sum + (p.confidence_score || 0);
+      }, 0) / forecastData.predictions.length
+    : undefined;
+
+  console.log('Average confidence score:', avgConfidenceScore);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Header />
@@ -153,7 +162,10 @@ function App() {
                   cacheHit={forecastData.metadata.cache_hit}
                 />
 
-                <ConfidenceBadge ciWidth={avgCIWidth} />
+                <ConfidenceBadge 
+                  confidenceScore={avgConfidenceScore} 
+                  ciWidth={avgCIWidth} 
+                />
               </>
             )}
 

@@ -52,6 +52,10 @@ htmlcov/
 .env.local
 .env.*.local
 
+# API Keys (security)
+*.key
+*api_key*
+
 # Database
 *.db
 *.sqlite

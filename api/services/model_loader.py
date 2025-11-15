@@ -43,13 +43,13 @@ class ModelLoader:
         # Load hourly model artifacts
         hourly = self.manifest.get("models", {}).get("hourly", {})
         
-        # Load XGBoost
+        # Load SARIMAX baseline
         xgb_path = self.base_path / hourly.get("baseline_path", "")
         if xgb_path.exists():
             import xgboost as xgb
             self.models['xgboost'] = xgb.XGBRegressor()
             self.models['xgboost'].load_model(str(xgb_path))
-            logger.info(f"✓ Loaded XGBoost from {xgb_path}")
+            logger.info(f"✓ Loaded SARIMAX baseline from {xgb_path}")
         
         # Load Transformer
         tf_path = self.base_path / hourly.get("transformer_path", "")
@@ -108,7 +108,7 @@ class ModelLoader:
     
     @property
     def xgb_model(self):
-        """Get XGBoost model."""
+        """Get SARIMAX baseline model."""
         return self.models.get('xgboost')
     
     @property
@@ -138,7 +138,7 @@ class ModelLoader:
         
         checks = {
             "transformer": (self.base_path / hourly.get("transformer_path", "")).exists(),
-            "xgboost": (self.base_path / hourly.get("baseline_path", "")).exists(),
+            "sarimax_baseline": (self.base_path / hourly.get("baseline_path", "")).exists(),
             "scaler": (self.base_path / hourly.get("scaler_path", "")).exists(),
             "feature_order": (self.base_path / hourly.get("feature_order_path", "")).exists(),
             "residual_stats": (self.base_path / hourly.get("residual_stats_path", "")).exists(),

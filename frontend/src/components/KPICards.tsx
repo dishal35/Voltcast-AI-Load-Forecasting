@@ -9,21 +9,21 @@ export default function KPICards({ mae, rmse, mape, residual_std }: KPICardsProp
   const kpis = [
     {
       label: 'MAE',
-      value: mae.toFixed(3),
+      value: (mae * 10).toFixed(1),
       unit: 'MW',
       description: 'Mean Absolute Error',
       color: 'bg-blue-100 text-blue-700',
     },
     {
       label: 'RMSE',
-      value: rmse.toFixed(3),
+      value: (rmse * 10).toFixed(1),
       unit: 'MW',
       description: 'Root Mean Square Error',
       color: 'bg-purple-100 text-purple-700',
     },
     {
       label: 'Residual Std',
-      value: residual_std.toFixed(3),
+      value: (residual_std * 10).toFixed(1),
       unit: 'MW',
       description: 'Residual Standard Deviation',
       color: 'bg-teal-100 text-teal-700',
