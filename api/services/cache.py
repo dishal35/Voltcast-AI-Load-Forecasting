@@ -7,7 +7,7 @@ import os
 import json
 import hashlib
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ class CacheService:
         self.redis_client = redis_client
         
         if redis_client is None:
-            logger.warning("No Redis client provided - caching disabled")
+            logger.warning("No Redis client - caching disabled")
     
     def get_forecast(self, key: str) -> Optional[Dict[str, Any]]:
         """
@@ -40,7 +40,7 @@ class CacheService:
         """
         if not self.redis_client:
             return None
-        
+            
         try:
             cached = self.redis_client.get(key)
             if cached:
@@ -67,7 +67,7 @@ class CacheService:
         """
         if not self.redis_client:
             return
-        
+            
         try:
             self.redis_client.setex(
                 key,
@@ -112,12 +112,93 @@ class CacheService:
         data_str = ','.join(f"{v:.2f}" for v in demand_values)
         return hashlib.sha256(data_str.encode()).hexdigest()
     
+    def store_hourly_predictions(
+        self,
+        date: str,
+        predictions: List[float],
+        ttl_seconds: int = 86400
+    ):
+        """
+        Store hourly predictions for a specific date.
+        
+        Args:
+            date: Date string (YYYY-MM-DD)
+            predictions: List of 24 hourly predictions
+            ttl_seconds: Time-to-live (default 24 hours)
+        """
+        key = f"hourly:{date}"
+        self.store_forecast(key, {'predictions': predictions}, ttl_seconds)
+    
+    def get_hourly_predictions(self, date: str) -> Optional[List[float]]:
+        """
+        Get cached hourly predictions for a specific date.
+        
+        Args:
+            date: Date string (YYYY-MM-DD)
+        
+        Returns:
+            List of 24 predictions or None if not cached
+        """
+        key = f"hourly:{date}"
+        cached = self.get_forecast(key)
+        if cached and 'predictions' in cached:
+            return cached['predictions']
+        return None
+    
+    def invalidate_date(self, date: str) -> bool:
+        """
+        Invalidate cached predictions for a specific date.
+        
+        Args:
+            date: Date string (YYYY-MM-DD)
+        
+        Returns:
+            True if invalidated, False otherwise
+        """
+        if not self.redis_client:
+            return False
+        
+        key = f"hourly:{date}"
+        try:
+            deleted = self.redis_client.delete(key)
+            if deleted:
+                logger.info(f"Invalidated cache for {date}")
+            return deleted > 0
+        except Exception as e:
+            logger.warning(f"Cache invalidation error for {date}: {e}")
+            return False
+    
+    def invalidate_date_range(self, start_date: str, end_date: str) -> int:
+        """
+        Invalidate cached predictions for a date range.
+        
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+        
+        Returns:
+            Number of dates invalidated
+        """
+        from datetime import datetime, timedelta
+        
+        start = datetime.strptime(start_date, '%Y-%m-%d').date()
+        end = datetime.strptime(end_date, '%Y-%m-%d').date()
+        
+        count = 0
+        current = start
+        while current <= end:
+            if self.invalidate_date(current.isoformat()):
+                count += 1
+            current += timedelta(days=1)
+        
+        return count
+    
     def invalidate_pattern(self, pattern: str) -> int:
         """
         Invalidate all keys matching pattern.
         
         Args:
-            pattern: Redis key pattern (e.g., 'forecast:hourly:*')
+            pattern: Redis key pattern (e.g., 'hourly:*')
         
         Returns:
             Number of keys deleted

@@ -1,0 +1,15 @@
+SLDC DATA 2021-2024 - SUMMARY STATISTICS
+================================================================================
+
+Count          : 35,064
+Mean           : 3,949.39 MW
+Median         : 3,828.65 MW
+Std Dev        : 1,277.68 MW
+Min            : 1,324.56 MW
+Max            : 8,565.14 MW
+Range          : 7,240.57 MW
+Q1 (25%)       : 3,088.48 MW
+Q3 (75%)       : 4,813.92 MW
+IQR            : 1,725.44 MW
+Skewness       : 0.28 MW
+Kurtosis       : -0.33 MW

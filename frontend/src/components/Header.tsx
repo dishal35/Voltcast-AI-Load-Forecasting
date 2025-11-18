@@ -27,7 +27,7 @@ export default function Header() {
           ⚡ Voltcast-AI — 24hr Load Forecast (Demo)
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Hybrid prediction
+          LightGBM + Transformer Hybrid | Accuracy: 1.79% MAPE, 52 MW MAE
         </p>
       </div>
       <div className="flex gap-2">

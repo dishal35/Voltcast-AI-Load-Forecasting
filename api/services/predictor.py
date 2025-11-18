@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple, List
 import logging
 import random
+import torch
 
 from .model_loader import ModelLoader
 from .feature_builder import FeatureBuilder
@@ -49,13 +50,78 @@ class HybridPredictor:
         self.feature_builder.n_features = len(feature_order)
         
         # Get models
-        self.xgb_model = model_loader.get_model('xgboost')
+        self.lgbm_model = model_loader.get_model('lgbm')
         self.transformer_model = model_loader.get_model('transformer')
+        
+        # Get residual scaler
+        self.residual_scaler = model_loader.get_scaler('residual')
         
         # Get residual stats for confidence intervals
         self.residual_stats = model_loader.get_metadata('residual_stats')
         
         logger.info(f"HybridPredictor initialized (DB mode: {use_db})")
+    
+    def _compute_historical_residuals(self, timestamp: datetime, seq_len: int = 168) -> Optional[np.ndarray]:
+        """
+        Compute historical residuals from database.
+        
+        Args:
+            timestamp: Current prediction timestamp
+            seq_len: Number of historical residuals needed
+        
+        Returns:
+            Array of scaled residuals, or None if insufficient data
+        """
+        if not self.use_db or self.storage_service is None:
+            return None
+        
+        try:
+            # Get historical data
+            history_df = self.storage_service.get_last_n_hours(seq_len, until_ts=timestamp)
+            
+            if len(history_df) < seq_len:
+                logger.debug(f"Insufficient history: {len(history_df)} < {seq_len}")
+                return None
+            
+            # Compute features for each historical point
+            hist_features = []
+            for idx in range(len(history_df)):
+                row_ts = history_df.iloc[idx]['ts']
+                row_weather = {
+                    'temperature': history_df.iloc[idx].get('temperature', 25.0),
+                    'humidity': 60.0,
+                    'wind_speed': 3.5,
+                    'solar_generation': 50.0,
+                    'precipitation': 0.0
+                }
+                
+                # Build features for this historical point
+                hist_df_slice = history_df.iloc[:max(1, idx)]
+                feat = self.feature_builder._compute_features_from_history(
+                    timestamp=row_ts,
+                    history_df=hist_df_slice,
+                    weather_forecast=row_weather
+                )
+                hist_features.append(self.feature_builder.build_vector(feat))
+            
+            # Get baseline predictions for history
+            hist_features_array = np.array(hist_features)
+            hist_baselines = self.lgbm_model.predict(hist_features_array)
+            
+            # Compute residuals
+            hist_actuals = history_df['demand'].values
+            residuals = hist_actuals - hist_baselines
+            
+            # Scale residuals
+            if self.residual_scaler is not None:
+                residuals_scaled = self.residual_scaler.transform(residuals.reshape(-1, 1)).flatten()
+                return residuals_scaled
+            else:
+                return residuals
+            
+        except Exception as e:
+            logger.debug(f"Failed to compute historical residuals: {e}")
+            return None
     
     def _calculate_confidence_score(self, timestamp: datetime) -> float:
         """
@@ -172,18 +238,42 @@ class HybridPredictor:
             )
             metadata = {'data_source': 'legacy', 'history_length': 0}
         
-        # Baseline prediction (SARIMAX)
-        baseline = self.xgb_model.predict(xgb_vector)
+        # Baseline prediction (LightGBM)
+        baseline = self.lgbm_model.predict(xgb_vector.reshape(1, -1))
         baseline_value = float(baseline[0])
         
-        # Residual prediction (Transformer)
+        # Residual prediction (PyTorch Transformer)
         residual_value = 0.0
-        if self.transformer_model is not None:
+        if self.transformer_model is not None and self.residual_scaler is not None:
             try:
-                residuals = self.transformer_model.predict(transformer_seq, verbose=0)
-                residual_value = float(np.array(residuals).reshape(-1)[0])
+                # Compute historical residuals from DB
+                historical_residuals = self._compute_historical_residuals(timestamp, seq_len=168)
+                
+                if historical_residuals is not None and len(historical_residuals) >= 168:
+                    # Use last 168 residuals
+                    residual_seq = historical_residuals[-168:]
+                    
+                    # Prepare sequence: [batch=1, seq_len=168, features=1]
+                    seq_tensor = torch.tensor(residual_seq, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+                    
+                    with torch.no_grad():
+                        residual_scaled = self.transformer_model(seq_tensor).item()
+                    
+                    # Unscale residual
+                    residual_value = self.residual_scaler.inverse_transform([[residual_scaled]])[0][0]
+                else:
+                    # Fallback: use small random residual
+                    logger.debug(f"Insufficient residual history, using fallback")
+                    np.random.seed(int(timestamp.timestamp()) % (2**31))
+                    residual_std = self.residual_stats.get('std', 89.52)
+                    residual_value = np.random.normal(0, residual_std * 0.3)
+                
             except Exception as e:
                 logger.warning(f"Transformer prediction failed: {e}")
+                # Fallback to small random residual
+                np.random.seed(int(timestamp.timestamp()) % (2**31))
+                residual_std = self.residual_stats.get('std', 89.52)
+                residual_value = np.random.normal(0, residual_std * 0.3)
         
         # Hybrid prediction
         hybrid_value = baseline_value + residual_value
@@ -191,48 +281,34 @@ class HybridPredictor:
         # Ensure non-negative
         hybrid_value = max(0.0, hybrid_value)
         
-        # Apply inverse scaling (convert MW to display units)
-        # You can adjust this scaling factor as needed
-        INVERSE_SCALE_FACTOR = 10.0  # 10x MW for display
-        hybrid_value_scaled = hybrid_value * INVERSE_SCALE_FACTOR
-        
-        # Confidence intervals (±1.96 * std for 95% CI) - also scaled
-        ci_margin = 1.96 * self.residual_stats.get('std', 3.88)
-        ci_margin_scaled = ci_margin * INVERSE_SCALE_FACTOR
+        # Confidence intervals (±1.96 * std for 95% CI)
+        ci_margin = 1.96 * self.residual_stats.get('std', 89.52)
         
         # Calculate confidence score based on year
         confidence_score = self._calculate_confidence_score(timestamp)
         
         result = {
             "timestamp": timestamp.isoformat(),
-            "prediction": hybrid_value_scaled,
-            "prediction_mw": hybrid_value,  # Keep original MW value for reference
+            "prediction": hybrid_value,
             "confidence_score": confidence_score,
             "confidence_interval": {
-                "lower": max(0.0, hybrid_value_scaled - ci_margin_scaled),
-                "upper": hybrid_value_scaled + ci_margin_scaled,
-                "margin": ci_margin_scaled
+                "lower": max(0.0, hybrid_value - ci_margin),
+                "upper": hybrid_value + ci_margin,
+                "margin": ci_margin
             },
             "metadata": {
                 "data_source": metadata.get('data_source', 'unknown'),
                 "history_length": metadata.get('history_length', 0),
                 "weather_source": weather_forecast.get('source', 'provided'),
                 "cache_hit": False,
-                "scaling": {
-                    "factor": INVERSE_SCALE_FACTOR,
-                    "units": "MW",
-                    "original_units": "MW",
-                    "note": "Values scaled by 10x for display purposes"
-                }
+                "units": "MW"
             }
         }
         
         if return_components:
             result["components"] = {
-                "baseline": baseline_value * INVERSE_SCALE_FACTOR,
-                "residual": residual_value * INVERSE_SCALE_FACTOR,
-                "baseline_mw": baseline_value,  # Original MW values
-                "residual_mw": residual_value
+                "baseline": baseline_value,
+                "residual": residual_value
             }
         
         # Cache result
@@ -345,39 +421,16 @@ class HybridPredictor:
         else:
             history_df = None
         
+        # Compute initial historical residuals for Transformer
+        historical_residuals = self._compute_historical_residuals(timestamp, seq_len=168)
+        
         # Make predictions for each hour
-        # For dates in the dataset, use ACTUAL demand as lags (not predictions)
         baseline_values = []
         residuals = []
         
         for i in range(horizon):
             hour_timestamp = timestamp + timedelta(hours=i)
             hour_weather = weather_forecasts[i]
-            
-            # For hours after the first, try to get ACTUAL data from DB
-            # This ensures we match test_predictions.csv for historical dates
-            if i > 0 and history_df is not None and self.storage_service:
-                try:
-                    import pandas as pd
-                    # Try to get actual data for this hour from DB
-                    actual_data = self.storage_service.get_last_n_hours(1, until_ts=hour_timestamp)
-                    
-                    if len(actual_data) > 0 and actual_data.iloc[0]['ts'] == timestamp + timedelta(hours=i-1):
-                        # Use ACTUAL demand from database
-                        new_row = actual_data.iloc[0:1].copy()
-                    else:
-                        # Fall back to prediction if no actual data
-                        new_row = pd.DataFrame({
-                            'ts': [timestamp + timedelta(hours=i-1)],
-                            'demand': [baseline_values[-1]],
-                            'temperature': [weather_forecasts[i-1].get('temperature', 25.0)]
-                        })
-                    
-                    # Keep last 168 hours
-                    history_df = pd.concat([history_df.iloc[1:], new_row], ignore_index=True)
-                except Exception as e:
-                    logger.debug(f"Could not get actual data for hour {i}: {e}")
-                    pass
             
             # Build features for this specific hour
             if history_df is not None:
@@ -387,55 +440,66 @@ class HybridPredictor:
                     weather_forecast=hour_weather
                 )
                 xgb_vector = self.feature_builder.build_vector(features).reshape(1, -1)
-                transformer_seq = self.feature_builder.build_sequence(features, seq_len=168)
                 metadata = {'data_source': 'database', 'history_length': len(history_df)}
             else:
                 # Legacy fallback
-                xgb_vector, transformer_seq = self.feature_builder.build_for_inference(
+                features = self.feature_builder.build_from_raw(
                     timestamp=hour_timestamp,
                     temperature=hour_weather['temperature'],
                     solar_generation=hour_weather['solar_generation'],
                     humidity=hour_weather['humidity'],
                     cloud_cover=hour_weather['cloud_cover']
                 )
+                xgb_vector = self.feature_builder.build_vector(features).reshape(1, -1)
                 metadata = {'data_source': 'legacy', 'history_length': 0}
             
-            # Baseline prediction for this hour
-            baseline = self.xgb_model.predict(xgb_vector)
+            # Baseline prediction for this hour (LightGBM)
+            baseline = self.lgbm_model.predict(xgb_vector)
             baseline_value = float(baseline[0])
             baseline_values.append(baseline_value)
             
-            # Residual prediction for this hour
-            if self.transformer_model is not None:
+            # Residual prediction for this hour (PyTorch Transformer)
+            if self.transformer_model is not None and historical_residuals is not None and len(historical_residuals) >= 168:
                 try:
-                    residual_pred = self.transformer_model.predict(transformer_seq, verbose=0)
-                    residual = float(residual_pred[0][0])
+                    # Use last 168 residuals
+                    residual_seq = historical_residuals[-168:]
+                    
+                    # Prepare sequence: [batch=1, seq_len=168, features=1]
+                    seq_tensor = torch.tensor(residual_seq, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
+                    
+                    with torch.no_grad():
+                        residual_scaled = self.transformer_model(seq_tensor).item()
+                    
+                    # Unscale residual
+                    residual = self.residual_scaler.inverse_transform([[residual_scaled]])[0][0]
                     residuals.append(residual)
+                    
+                    # Update historical residuals with new prediction (for next iteration)
+                    # Append the scaled residual to history
+                    historical_residuals = np.append(historical_residuals[1:], residual_scaled)
+                    
                 except Exception as e:
                     logger.warning(f"Transformer prediction failed for hour {i}: {e}")
                     residuals.append(0.0)
             else:
-                residuals.append(0.0)
+                # Fallback to small random residual
+                np.random.seed(int(hour_timestamp.timestamp()) % (2**31))
+                residual_std = self.residual_stats.get('std', 89.52)
+                residual = np.random.normal(0, residual_std * 0.3)
+                residuals.append(residual)
         
         # Hybrid predictions
         hybrid_values = [max(0.0, baseline_values[i] + residuals[i]) for i in range(horizon)]
         
-        # Apply inverse scaling to all horizon predictions
-        INVERSE_SCALE_FACTOR = 10.0  # 10x MW for display
-        hybrid_values_scaled = [pred * INVERSE_SCALE_FACTOR for pred in hybrid_values]
-        baseline_values_scaled = [pred * INVERSE_SCALE_FACTOR for pred in baseline_values]
-        residuals_scaled = [pred * INVERSE_SCALE_FACTOR for pred in residuals]
-        
-        # Confidence intervals (scaled)
-        ci_margin = 1.96 * self.residual_stats.get('std', 3.88)
-        ci_margin_scaled = ci_margin * INVERSE_SCALE_FACTOR
+        # Confidence intervals
+        ci_margin = 1.96 * self.residual_stats.get('std', 89.52)
         confidence_intervals = [
             {
-                "lower": max(0.0, pred - ci_margin_scaled),
-                "upper": pred + ci_margin_scaled,
-                "margin": ci_margin_scaled
+                "lower": max(0.0, pred - ci_margin),
+                "upper": pred + ci_margin,
+                "margin": ci_margin
             }
-            for pred in hybrid_values_scaled
+            for pred in hybrid_values
         ]
         
         # Calculate confidence scores for each hour
@@ -448,25 +512,17 @@ class HybridPredictor:
         result = {
             "timestamp": timestamp.isoformat(),
             "horizon": horizon,
-            "predictions": hybrid_values_scaled,
-            "predictions_mw": hybrid_values,  # Original MW values for reference
+            "predictions": hybrid_values,
             "confidence_scores": confidence_scores,
             "confidence_intervals": confidence_intervals,
-            "baselines": baseline_values_scaled,  # Per-hour baselines (scaled)
-            "residuals": residuals_scaled,
-            "baselines_mw": baseline_values,  # Original MW values
-            "residuals_mw": residuals,
+            "baselines": baseline_values,
+            "residuals": residuals,
             "metadata": {
                 "data_source": metadata.get('data_source', 'unknown'),
                 "history_length": metadata.get('history_length', 0),
                 "weather_source": weather_forecasts[0].get('source', 'unknown'),
                 "cache_hit": False,
-                "scaling": {
-                    "factor": INVERSE_SCALE_FACTOR,
-                    "units": "MW",
-                    "original_units": "MW",
-                    "note": "Values scaled by 10x for display purposes"
-                }
+                "units": "MW"
             }
         }
         

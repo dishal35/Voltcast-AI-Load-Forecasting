@@ -1,46 +1,60 @@
 {
-  "model_store_version": "1.0",
-  "generated_at": "2025-11-08T13:00:00Z",
+  "model_store_version": "2.0",
+  "generated_at": "2025-11-17T00:00:00Z",
   "models": {
     "hourly": {
-      "name": "hybrid_transformer_sarimax",
-      "description": "Hybrid model combining SARIMAX baseline with Transformer residual correction",
-      "transformer_path": "artifacts/transformer_best.keras",
-      "baseline_path": "artifacts/baseline.json",
+      "name": "hybrid_lgbm_transformer",
+      "description": "Hybrid model combining LightGBM baseline with PyTorch Transformer residual correction",
+      "transformer_path": "artifacts/transformer_residual.pt",
+      "transformer_type": "pytorch",
+      "baseline_path": "artifacts/lgbm_model.txt",
+      "baseline_type": "lightgbm",
       "scaler_path": "artifacts/transformer_scaler.pkl",
-      "residual_scaler_path": null,
-      "residual_scaler_note": "Residuals are not scaled - transformer predicts raw residuals that are added directly to baseline",
+      "residual_scaler_path": "artifacts/residual_scaler.pkl",
       "feature_order_path": "artifacts/feature_order.json",
       "residual_stats_path": "artifacts/residual_stats.pkl",
       "seq_len": 168,
       "horizon": 24,
-      "n_features": 59,
-      "residuals_scaled": false,
+      "n_features": 17,
+      "residuals_scaled": true,
       "training_config": {
-        "train_start": "2019-01-01",
-        "train_end": "2021-12-31",
-        "val_end": "2022-12-31",
-        "batch_size": 128,
-        "epochs": 50,
-        "learning_rate": 0.001,
-        "random_seed": 42
+        "train_start": "2021-01-15",
+        "train_end": "2024-01-01",
+        "test_start": "2024-01-01",
+        "test_end": "2024-12-31",
+        "lgbm_params": {
+          "objective": "regression",
+          "metric": "rmse",
+          "learning_rate": 0.01,
+          "num_leaves": 64,
+          "num_boost_round": 4000,
+          "early_stopping_rounds": 200
+        },
+        "transformer_params": {
+          "d_model": 64,
+          "nhead": 4,
+          "num_layers": 2,
+          "dim_feedforward": 128,
+          "dropout": 0.1,
+          "seq_len": 168,
+          "batch_size": 512,
+          "epochs": 25,
+          "learning_rate": 0.001
+        }
       },
-      "training_date": "2025-11-07T20:44:29.901404",
+      "training_date": "2025-11-17T00:00:00Z",
       "performance_metrics": {
         "baseline": {
-          "mae": 2.015483856201172,
-          "rmse": 3.8871757984161377,
-          "mape": 0.4124832805246115
+          "rmse": 153.82,
+          "mape": 1.9627
         },
         "hybrid": {
-          "mae": 2.015563488006592,
-          "rmse": 3.8876259326934814,
-          "mape": 0.41252165101468563
+          "rmse": 143.81,
+          "mape": 1.7938
         },
         "improvement": {
-          "mae": -0.003951001781388186,
-          "rmse": -0.01157998267444782,
-          "mape": -0.009302314029639385
+          "rmse": -10.01,
+          "mape": -0.1689
         }
       },
       "metrics_path": "artifacts/final_report.json"
@@ -60,12 +74,10 @@
     "last_verified": null
   },
   "dependencies": {
-    "tensorflow": "2.16.2",
-    "tf_keras": "2.16.0",
-    "xgboost": ">=2.0.0",
+    "lightgbm": ">=4.0.0",
+    "torch": ">=2.0.0",
     "scikit_learn": ">=1.4.0",
-    "sklearn_version": "1.6.1",
-    "sklearn_pickle_warning": "RESOLVED - Scaler re-pickled with sklearn 1.6.1"
+    "sklearn_version": "1.6.1"
   },
   "database": {
     "type": "sqlite",

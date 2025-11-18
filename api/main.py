@@ -63,12 +63,21 @@ async def startup_event():
         logger.info("Validating artifacts...")
         artifacts = model_loader.validate_artifacts()
         
-        missing = [name for name, exists in artifacts.items() if not exists]
+        # Only check for required artifacts (not optional ones like scaler and sarimax)
+        required_artifacts = ['transformer', 'lgbm_baseline', 'residual_scaler', 'feature_order', 'residual_stats']
+        missing = [name for name in required_artifacts if not artifacts.get(name, False)]
+        
         if missing:
-            logger.error(f"Missing artifacts: {missing}")
+            logger.error(f"Missing required artifacts: {missing}")
             raise RuntimeError(f"Missing required artifacts: {missing}")
         
-        logger.info("✓ All artifacts validated")
+        # Log optional artifacts status
+        optional = ['scaler', 'sarimax']
+        for name in optional:
+            if not artifacts.get(name, False):
+                logger.info(f"Optional artifact '{name}' not present (not required for new model)")
+        
+        logger.info("✓ All required artifacts validated")
         
         # Initialize predictor (Phase 2: with DB support)
         logger.info("Initializing predictor...")

@@ -7,6 +7,7 @@ import os
 import json
 import logging
 import hashlib
+import math
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any
 import requests
@@ -237,9 +238,10 @@ class WeatherService:
         return max(0.0, solar_generation)
     
     def _get_fallback_weather(self, ts: datetime) -> Dict[str, Any]:
-        """Get fallback weather based on historical averages."""
+        """Get fallback weather based on historical averages with daily variation."""
         hour = ts.hour
         month = ts.month
+        day_of_year = ts.timetuple().tm_yday
         
         # Seasonal temperature adjustment for Delhi
         seasonal_temp_adj = {
@@ -250,15 +252,34 @@ class WeatherService:
         base_temp = self.historical_averages.get('temperature', 25.0)
         temperature = base_temp + seasonal_temp_adj.get(month, 0)
         
+        # Add daily variation (±2°C based on day of year)
+        # This creates a sinusoidal pattern that varies by day
+        daily_variation = 2.0 * math.sin(2 * math.pi * day_of_year / 365.0)
+        temperature += daily_variation
+        
+        # Add hourly variation (±1°C based on hour)
+        hourly_variation = 1.0 * math.sin(2 * math.pi * hour / 24.0)
+        temperature += hourly_variation
+        
         # Solar generation by hour
         solar_by_hour = self.historical_averages.get('solar_generation_by_hour', {})
         solar_generation = solar_by_hour.get(str(hour), 0.0)
         
+        # Add daily variation to humidity (±5%)
+        humidity_base = self.historical_averages.get('humidity', 60.0)
+        humidity_variation = 5.0 * math.cos(2 * math.pi * day_of_year / 365.0)
+        humidity = humidity_base + humidity_variation
+        
+        # Add daily variation to wind speed (±0.5 m/s)
+        wind_base = self.historical_averages.get('wind_speed', 3.5)
+        wind_variation = 0.5 * math.sin(2 * math.pi * (day_of_year + 100) / 365.0)
+        wind_speed = wind_base + wind_variation
+        
         return {
             'ts': ts,
             'temperature': temperature,
-            'humidity': self.historical_averages.get('humidity', 60.0),
-            'wind_speed': self.historical_averages.get('wind_speed', 3.5),
+            'humidity': humidity,
+            'wind_speed': wind_speed,
             'cloud_cover': self.historical_averages.get('cloud_cover', 40.0),
             'solar_generation': solar_generation,
             'source': 'fallback'

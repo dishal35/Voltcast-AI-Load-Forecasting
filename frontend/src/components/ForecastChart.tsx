@@ -22,6 +22,7 @@ interface ChartDataPoint {
   hour: string;
   fullTime: string;
   prediction: number;
+  actual?: number | null;
   baseline: number;
   ci_lower: number;
   ci_upper: number;
@@ -37,11 +38,21 @@ const CustomTooltip = ({ active, payload }: any) => {
       <div className="bg-white p-3 rounded-lg shadow-lg border border-slate-200">
         <p className="text-sm font-semibold text-slate-800 mb-2">{data.fullTime}</p>
         <div className="space-y-1 text-xs">
+          {data.actual !== undefined && data.actual !== null && (
+            <p className="text-blue-600 font-semibold">
+              <span className="font-medium">Actual:</span> {data.actual.toFixed(1)} MW
+            </p>
+          )}
           <p className="text-teal-600">
-            <span className="font-medium">Hybrid:</span> {data.prediction.toFixed(1)} MW
+            <span className="font-medium">Predicted:</span> {data.prediction.toFixed(1)} MW
           </p>
+          {data.actual !== undefined && data.actual !== null && (
+            <p className="text-red-600">
+              <span className="font-medium">Error:</span> {(data.prediction - data.actual).toFixed(1)} MW
+            </p>
+          )}
           <p className="text-slate-600">
-            <span className="font-medium">SARIMAX:</span> {data.baseline.toFixed(1)} MW
+            <span className="font-medium">LGBM:</span> {data.baseline.toFixed(1)} MW
           </p>
           <p className="text-slate-500">
             <span className="font-medium">Residual:</span> {data.residual.toFixed(2)} MW
@@ -66,6 +77,7 @@ export default function ForecastChart({ data, selectedHourIndex, onSelectHour }:
     hour: dayjs(pred.ts_iso).format('HH:mm'),
     fullTime: dayjs(pred.ts_iso).format('MMM DD, HH:mm'),
     prediction: pred.prediction,
+    actual: pred.actual,
     baseline: pred.baseline,
     ci_lower: pred.ci_lower,
     ci_upper: pred.ci_upper,
@@ -137,7 +149,17 @@ export default function ForecastChart({ data, selectedHourIndex, onSelectHour }:
               strokeWidth={2}
               strokeDasharray="5 5"
               dot={false}
-              name="SARIMAX"
+              name="LGBM Baseline"
+            />
+            <Line
+              type="monotone"
+              dataKey="actual"
+              stroke="#3b82f6"
+              strokeWidth={3}
+              dot={{ r: 5, fill: '#3b82f6', strokeWidth: 2, stroke: '#fff' }}
+              activeDot={{ r: 7 }}
+              name="Actual Load"
+              connectNulls={false}
             />
             <Line
               type="monotone"
@@ -146,7 +168,7 @@ export default function ForecastChart({ data, selectedHourIndex, onSelectHour }:
               strokeWidth={3}
               dot={{ r: 4, fill: '#0ea5a4', strokeWidth: 2, stroke: '#fff' }}
               activeDot={{ r: 6 }}
-              name="Hybrid Prediction"
+              name="Predicted Load"
             />
           </ComposedChart>
         </ResponsiveContainer>

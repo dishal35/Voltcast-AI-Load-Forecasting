@@ -102,6 +102,9 @@ frontend/.cache/
 tmp/
 temp/
 
+# Cache
+cache/
+
 # CSV data files (large data files should not be in git)
 *.csv
 transformer_ready.csv

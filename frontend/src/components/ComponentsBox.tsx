@@ -73,12 +73,17 @@ export default function ComponentsBox({ selectedPoint, dataSource, cacheHit }: C
 
         {/* Confidence Interval */}
         <div className="border-t pt-3">
-          <div className="text-sm text-slate-500">95% Confidence Interval</div>
+          <div className="text-sm text-slate-500 flex items-center gap-1">
+            95% Confidence Interval
+            <span className="text-xs cursor-help" title="Range where actual value is expected to fall 95% of the time">
+              ⓘ
+            </span>
+          </div>
           <div className="text-sm font-medium text-slate-700">
             [{selectedPoint.ci_lower.toFixed(1)}, {selectedPoint.ci_upper.toFixed(1)}] MW
           </div>
-          <div className="text-xs text-slate-500 mt-1">
-            Margin: ±{ciMargin.toFixed(1)} MW
+          <div className="text-xs text-slate-400 mt-1">
+            95% confident actual will be in this range
           </div>
         </div>
 

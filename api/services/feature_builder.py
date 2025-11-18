@@ -188,29 +188,29 @@ class FeatureBuilder:
     def build_sequence(
         self,
         features: Dict[str, float],
-        seq_len: int = 168
+        seq_len: int = 168,
+        residuals: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
-        Build transformer sequence by repeating base vector.
+        Build transformer sequence.
+        For LightGBM+Transformer model, this should be residuals, not features.
         
         Args:
-            features: Dictionary of feature name -> value
+            features: Dictionary of feature name -> value (used if residuals not provided)
             seq_len: Sequence length (default 168)
+            residuals: Optional array of residuals to use directly
         
         Returns:
-            Numpy array of shape (1, seq_len, n_features)
+            Numpy array of shape (seq_len,) for residuals
         """
-        base_vec = self.build_vector(features)
+        if residuals is not None:
+            # Use provided residuals directly
+            return residuals[-seq_len:].astype(np.float32)
         
-        # Apply scaler if available
-        if self.scaler is not None:
-            base_vec = self.scaler.transform(base_vec.reshape(1, -1)).reshape(-1)
-        
-        # Create sequence by repeating
-        seq = np.tile(base_vec, (seq_len, 1)).astype(np.float32)
-        
-        # Add batch dimension
-        return np.expand_dims(seq, axis=0)
+        # Fallback: create dummy sequence (zeros)
+        # In production, this should not be used - residuals should come from history
+        logger.warning("Building sequence without residuals - using zeros")
+        return np.zeros(seq_len, dtype=np.float32)
     
     def build_from_db_history(
         self,
@@ -282,8 +282,9 @@ class FeatureBuilder:
             # Build XGBoost vector (unscaled)
             xgb_vector = self.build_vector(features).reshape(1, -1)
             
-            # Build Transformer sequence (scaled)
-            transformer_seq = self.build_sequence(features, seq_len=seq_len)
+            # For LightGBM+Transformer model, we don't build a sequence here
+            # Residuals are computed in the predictor
+            transformer_seq = None
             
             return xgb_vector, transformer_seq, metadata
         
@@ -325,6 +326,7 @@ class FeatureBuilder:
     ) -> Dict[str, float]:
         """
         Compute all features using real historical data.
+        Updated for LightGBM model with 17 features.
         
         Args:
             timestamp: Prediction timestamp
@@ -339,94 +341,72 @@ class FeatureBuilder:
         # Temporal features
         hour = timestamp.hour
         day_of_week = timestamp.weekday()
-        day_of_year = timestamp.timetuple().tm_yday
         month = timestamp.month
         
-        # Cyclical encoding
-        features['hour_cos'] = np.cos(2 * np.pi * hour / 24)
-        features['hour_sin'] = np.sin(2 * np.pi * hour / 24)
-        features['dow_cos'] = np.cos(2 * np.pi * day_of_week / 7)
-        features['dow_sin'] = np.sin(2 * np.pi * day_of_week / 7)
-        features['doy_cos'] = np.cos(2 * np.pi * day_of_year / 365)
-        features['doy_sin'] = np.sin(2 * np.pi * day_of_year / 365)
-        features['month_cos'] = np.cos(2 * np.pi * month / 12)
-        features['month_sin'] = np.sin(2 * np.pi * month / 12)
-        
-        # Weather features (from forecast)
-        features['temperature'] = weather_forecast.get('temperature', self.historical_averages.get('temperature', 25.0))
-        features['solar_generation'] = weather_forecast.get('solar_generation', self.historical_averages.get('solar_generation', 50.0))
-        features['humidity'] = weather_forecast.get('humidity', self.historical_averages.get('humidity', 50.0))
-        features['cloud_cover'] = weather_forecast.get('cloud_cover', self.historical_averages.get('cloud_cover', 50.0))
-        
-        # Derived weather features
-        temp = features['temperature']
-        solar = features['solar_generation']
-        humidity = features['humidity']
-        
-        features['temp_solar_interaction'] = temp * solar / 100.0
-        features['temp_humidity_interaction'] = temp * humidity / 100.0
-        features['heat_index'] = temp + 0.5555 * (humidity / 100.0 * 6.11 * np.exp(5417.7530 * (1/273.16 - 1/(273.15 + temp))) - 10)
-        
-        # Weekend and holiday flags
+        # Basic temporal features (separate dow and hour for notebook model)
+        features['dow'] = day_of_week
+        features['hour'] = hour
+        features['month'] = month
         features['is_weekend'] = 1 if day_of_week >= 5 else 0
         features['is_holiday'] = 0  # TODO: integrate holiday calendar
         
+        # Weather features (from forecast)
+        temp = weather_forecast.get('temperature', self.historical_averages.get('temperature', 25.0))
+        humidity = weather_forecast.get('humidity', self.historical_averages.get('humidity', 60.0))
+        wind_speed = weather_forecast.get('wind_speed', 3.5)
+        solar_rad = weather_forecast.get('solar_generation', 50.0)  # Using solar_generation as proxy for shortwave_radiation
+        precip = weather_forecast.get('precipitation', 0.0)
+        
+        features['temperature_2m'] = temp
+        features['relativehumidity_2m'] = humidity
+        features['wind_speed_10m'] = wind_speed
+        features['shortwave_radiation'] = solar_rad
+        features['precipitation'] = precip
+        
+        # Derived weather features
+        # Apparent temperature (feels like) - simplified formula
+        features['apparent_temperature'] = temp + 0.33 * (humidity / 100.0 * 6.11 * np.exp(5417.7530 * (1/273.16 - 1/(273.15 + temp))) - 10) - 0.70 * wind_speed
+        
+        # Heat index - simplified formula
+        if temp >= 27 and humidity >= 40:
+            features['heat_index'] = -8.78469475556 + 1.61139411 * temp + 2.33854883889 * humidity - 0.14611605 * temp * humidity
+        else:
+            features['heat_index'] = temp
+        
         # Extract demand history
         demand_values = history_df['demand'].values
-        temp_values = history_df['temperature'].fillna(temp).values
         
         # Lag features (demand)
-        lag_indices = [1, 2, 3, 6, 12, 24, 48, 72, 168]
-        for lag in lag_indices:
-            idx = -lag if lag <= len(demand_values) else -len(demand_values)
-            features[f'demand_lag_{lag}'] = demand_values[idx]
-        
-        # Lag features (temperature)
-        for lag in lag_indices:
-            idx = -lag if lag <= len(temp_values) else -len(temp_values)
-            features[f'temp_lag_{lag}'] = temp_values[idx]
-        
-        # Rolling statistics
-        windows = [6, 12, 24, 168]
-        for window in windows:
-            window_data = demand_values[-window:] if window <= len(demand_values) else demand_values
-            
-            features[f'demand_roll_mean_{window}'] = np.mean(window_data)
-            features[f'demand_roll_std_{window}'] = np.std(window_data)
-            features[f'demand_roll_q25_{window}'] = np.percentile(window_data, 25)
-            features[f'demand_roll_q75_{window}'] = np.percentile(window_data, 75)
-        
-        # Differences
-        if len(demand_values) >= 2:
-            features['demand_diff_1h'] = demand_values[-1] - demand_values[-2]
-            features['demand_diff2_1h'] = features['demand_diff_1h'] - (demand_values[-2] - demand_values[-3] if len(demand_values) >= 3 else 0)
+        # lag_1: 1 hour ago
+        # lag_24: 24 hours ago (same hour yesterday)
+        # lag_168: 168 hours ago (same hour last week)
+        if len(demand_values) >= 1:
+            features['lag_1'] = demand_values[-1]
         else:
-            features['demand_diff_1h'] = 0.0
-            features['demand_diff2_1h'] = 0.0
+            features['lag_1'] = self.historical_averages.get('demand', 3000.0)
         
         if len(demand_values) >= 24:
-            features['demand_diff_24h'] = demand_values[-1] - demand_values[-24]
+            features['lag_24'] = demand_values[-24]
         else:
-            features['demand_diff_24h'] = 0.0
+            features['lag_24'] = features['lag_1']
         
-        # FFT components (from last 168 hours)
-        fft_data = demand_values[-168:] if len(demand_values) >= 168 else demand_values
-        if len(fft_data) >= 24:
-            fft_result = np.fft.fft(fft_data)
-            fft_amps = np.abs(fft_result)
-            
-            # Top 3 amplitudes (excluding DC component)
-            top_indices = np.argsort(fft_amps[1:])[-3:][::-1] + 1
-            for i, idx in enumerate(top_indices, 1):
-                features[f'fft_amp_{i}_168'] = fft_amps[idx]
+        if len(demand_values) >= 168:
+            features['lag_168'] = demand_values[-168]
         else:
-            features['fft_amp_1_168'] = 0.0
-            features['fft_amp_2_168'] = 0.0
-            features['fft_amp_3_168'] = 0.0
+            features['lag_168'] = features['lag_1']
         
-        # Holiday distance features (placeholder)
-        features['days_since_last_holiday'] = 30.0
-        features['days_to_next_holiday'] = 30.0
+        # Rolling mean features
+        # roll24: mean of last 24 hours
+        # roll168: mean of last 168 hours (7 days)
+        if len(demand_values) >= 24:
+            features['roll24'] = np.mean(demand_values[-24:])
+        else:
+            features['roll24'] = np.mean(demand_values) if len(demand_values) > 0 else features['lag_1']
+        
+        if len(demand_values) >= 168:
+            features['roll168'] = np.mean(demand_values[-168:])
+        else:
+            features['roll168'] = np.mean(demand_values) if len(demand_values) > 0 else features['lag_1']
         
         return features
     
@@ -480,9 +460,9 @@ class FeatureBuilder:
         humidity: Optional[float] = None,
         cloud_cover: Optional[float] = None,
         seq_len: int = 168
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         """
-        Build both XGBoost vector and Transformer sequence for inference.
+        Build XGBoost vector for inference.
         LEGACY METHOD - use build_from_db_history for production.
         
         Args:
@@ -491,12 +471,12 @@ class FeatureBuilder:
             solar_generation: Solar generation in MW
             humidity: Humidity percentage (optional)
             cloud_cover: Cloud cover percentage (optional)
-            seq_len: Sequence length for transformer (default 168)
+            seq_len: Sequence length (unused, kept for compatibility)
         
         Returns:
-            Tuple of (xgb_vector, transformer_sequence)
+            Tuple of (xgb_vector, None)
             - xgb_vector: shape (1, n_features)
-            - transformer_sequence: shape (1, seq_len, n_features)
+            - None: transformer sequence not used in new model
         """
         # Build features
         features = self.build_from_raw(
@@ -510,7 +490,5 @@ class FeatureBuilder:
         # Build XGBoost vector (unscaled)
         xgb_vector = self.build_vector(features).reshape(1, -1)
         
-        # Build Transformer sequence (scaled)
-        transformer_seq = self.build_sequence(features, seq_len=seq_len)
-        
-        return xgb_vector, transformer_seq
+        # For LightGBM+Transformer model, residuals are computed in predictor
+        return xgb_vector, None

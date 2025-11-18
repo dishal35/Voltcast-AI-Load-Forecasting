@@ -7,8 +7,69 @@ import joblib
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
+import torch
+import torch.nn as nn
 
 logger = logging.getLogger(__name__)
+
+
+class PositionalEncoding(nn.Module):
+    """Positional encoding for Transformer."""
+    
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        import math
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        seq_len = x.size(1)
+        x = x + self.pe[:, :seq_len, :]
+        return x
+
+
+class ResidualTransformer(nn.Module):
+    """PyTorch Transformer for residual prediction."""
+    
+    def __init__(self, d_model=64, nhead=4, num_layers=2, dim_feedforward=128, dropout=0.1):
+        super().__init__()
+        self.input_proj = nn.Linear(1, d_model)
+        self.pos_encoder = PositionalEncoding(d_model)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=nhead,
+            dim_feedforward=dim_feedforward,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.fc_out = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.ReLU(),
+            nn.Linear(d_model, 1)
+        )
+
+    def forward(self, x):
+        """
+        Forward pass.
+        
+        Args:
+            x: [batch, seq_len, 1]
+        
+        Returns:
+            [batch] predictions
+        """
+        x = self.input_proj(x)                # [batch, seq_len, d_model]
+        x = self.pos_encoder(x)               # [batch, seq_len, d_model]
+        x = self.transformer_encoder(x)       # [batch, seq_len, d_model]
+        x = x[:, -1, :]                       # use last token
+        out = self.fc_out(x)                  # [batch, 1]
+        return out.squeeze(-1)                # [batch]
 
 
 class ModelLoader:
@@ -43,29 +104,48 @@ class ModelLoader:
         # Load hourly model artifacts
         hourly = self.manifest.get("models", {}).get("hourly", {})
         
-        # Load SARIMAX baseline
-        xgb_path = self.base_path / hourly.get("baseline_path", "")
-        if xgb_path.exists():
-            import xgboost as xgb
-            self.models['xgboost'] = xgb.XGBRegressor()
-            self.models['xgboost'].load_model(str(xgb_path))
-            logger.info(f"✓ Loaded SARIMAX baseline from {xgb_path}")
+        # Load LightGBM baseline
+        lgb_path = self.base_path / hourly.get("baseline_path", "")
+        if lgb_path.exists():
+            import lightgbm as lgb
+            self.models['lgbm'] = lgb.Booster(model_file=str(lgb_path))
+            logger.info(f"✓ Loaded LightGBM baseline from {lgb_path}")
+        else:
+            logger.warning(f"LightGBM model not found at {lgb_path}")
         
-        # Load Transformer
-        tf_path = self.base_path / hourly.get("transformer_path", "")
-        if tf_path.exists():
+        # Load PyTorch Transformer
+        transformer_path = self.base_path / hourly.get("transformer_path", "")
+        if transformer_path.exists():
             try:
-                from tf_keras.models import load_model
-                self.models['transformer'] = load_model(str(tf_path))
-                logger.info(f"✓ Loaded Transformer from {tf_path}")
+                model = ResidualTransformer(
+                    d_model=64,
+                    nhead=4,
+                    num_layers=2,
+                    dim_feedforward=128,
+                    dropout=0.1
+                )
+                model.load_state_dict(torch.load(str(transformer_path), map_location='cpu'))
+                model.eval()
+                self.models['transformer'] = model
+                logger.info(f"✓ Loaded PyTorch Transformer from {transformer_path}")
             except Exception as e:
                 logger.warning(f"Failed to load Transformer: {e}")
+        else:
+            logger.warning(f"Transformer model not found at {transformer_path}")
         
-        # Load scaler
+        # Load feature scaler (for input features)
         scaler_path = self.base_path / hourly.get("scaler_path", "")
         if scaler_path.exists():
             self.scalers['transformer'] = joblib.load(str(scaler_path))
-            logger.info(f"✓ Loaded scaler from {scaler_path}")
+            logger.info(f"✓ Loaded feature scaler from {scaler_path}")
+        
+        # Load residual scaler (for residuals)
+        res_scaler_path = self.base_path / hourly.get("residual_scaler_path", "")
+        if res_scaler_path.exists():
+            self.scalers['residual'] = joblib.load(str(res_scaler_path))
+            logger.info(f"✓ Loaded residual scaler from {res_scaler_path}")
+        else:
+            logger.warning(f"Residual scaler not found at {res_scaler_path}")
         
         # Load feature order
         feat_path = self.base_path / hourly.get("feature_order_path", "")
@@ -74,12 +154,16 @@ class ModelLoader:
                 data = json.load(f)
                 self.metadata['feature_order'] = data.get("feature_order", data) if isinstance(data, dict) else data
             logger.info(f"✓ Loaded feature order ({len(self.metadata['feature_order'])} features)")
+        else:
+            logger.warning(f"Feature order not found at {feat_path}")
         
         # Load residual stats
         stats_path = self.base_path / hourly.get("residual_stats_path", "")
         if stats_path.exists():
             self.metadata['residual_stats'] = joblib.load(str(stats_path))
             logger.info(f"✓ Loaded residual stats")
+        else:
+            logger.warning(f"Residual stats not found at {stats_path}")
         
         # Load SARIMAX weekly model
         weekly = self.manifest.get("models", {}).get("weekly", {})
@@ -107,9 +191,14 @@ class ModelLoader:
         return self.manifest
     
     @property
+    def lgbm_model(self):
+        """Get LightGBM baseline model."""
+        return self.models.get('lgbm')
+    
+    @property
     def xgb_model(self):
-        """Get SARIMAX baseline model."""
-        return self.models.get('xgboost')
+        """Get baseline model (backward compatibility)."""
+        return self.models.get('lgbm')
     
     @property
     def transformer_model(self):
@@ -138,8 +227,9 @@ class ModelLoader:
         
         checks = {
             "transformer": (self.base_path / hourly.get("transformer_path", "")).exists(),
-            "sarimax_baseline": (self.base_path / hourly.get("baseline_path", "")).exists(),
+            "lgbm_baseline": (self.base_path / hourly.get("baseline_path", "")).exists(),
             "scaler": (self.base_path / hourly.get("scaler_path", "")).exists(),
+            "residual_scaler": (self.base_path / hourly.get("residual_scaler_path", "")).exists(),
             "feature_order": (self.base_path / hourly.get("feature_order_path", "")).exists(),
             "residual_stats": (self.base_path / hourly.get("residual_stats_path", "")).exists(),
             "sarimax": (self.base_path / weekly.get("path", "")).exists(),

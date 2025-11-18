@@ -154,6 +154,7 @@ function App() {
                   rmse={forecastData.metadata.rmse}
                   mape={forecastData.metadata.mape}
                   residual_std={forecastData.metadata.residual_std}
+                  predictions={forecastData.predictions}
                 />
 
                 <ComponentsBox

@@ -67,6 +67,8 @@ class HorizonPredictionResponse(BaseModel):
     timestamp: str = Field(..., description="Starting timestamp (ISO format)")
     horizon: int = Field(..., description="Number of hours predicted")
     predictions: List[float] = Field(..., description="Hybrid predictions for each hour (MW)")
+    actuals: Optional[List[Optional[float]]] = Field(None, description="Actual load values for each hour (MW), None for future hours")
+    last_actual_index: Optional[int] = Field(None, description="Index of last hour with actual data (-1 if none)")
     predictions_mw: Optional[List[float]] = Field(None, description="Hybrid predictions for each hour (original MW)")
     confidence_scores: List[float] = Field(..., description="Confidence scores for each hour (0-100%)")
     confidence_intervals: List[ConfidenceInterval] = Field(..., description="Confidence intervals for each hour")
@@ -111,6 +113,7 @@ class DailyForecast(BaseModel):
     peak_demand_mw: float = Field(..., description="Peak demand (MW)")
     min_demand_mw: float = Field(..., description="Minimum demand (MW)")
     total_energy_mwh: float = Field(..., description="Total energy (MWh)")
+    peak_hour: Optional[int] = Field(None, description="Hour of peak demand (0-23)")
     confidence_interval: Optional[Dict[str, float]] = Field(None, description="95% CI bounds")
 
 

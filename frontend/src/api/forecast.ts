@@ -3,6 +3,7 @@ import apiClient from './client';
 export interface PredictionPoint {
   ts_iso: string;
   prediction: number;
+  actual?: number | null;  // NEW: Actual load value (null for future hours)
   baseline: number;
   residual: number;
   ci_lower: number;
@@ -62,14 +63,16 @@ export async function getForecast(timestamp: string, horizon: number = 24): Prom
     const ci = data.confidence_intervals[index];
     const residual = data.residuals[index];
     const baseline = data.baselines ? data.baselines[index] : (data.baseline || pred);
+    const actual = data.actuals ? data.actuals[index] : undefined;  // NEW: Get actual value
     const confidence_score = data.confidence_scores ? data.confidence_scores[index] : undefined;
-    console.log(`Mapping prediction ${index}: confidence_score = ${confidence_score}`);
+    console.log(`Mapping prediction ${index}: confidence_score = ${confidence_score}, actual = ${actual}`);
     const startTime = new Date(data.timestamp);
     startTime.setHours(startTime.getHours() + index);
     
     return {
       ts_iso: startTime.toISOString(),
       prediction: pred,
+      actual: actual,  // NEW: Include actual value
       baseline: baseline,
       residual: residual || 0,
       ci_lower: ci?.lower || pred - 7.6,
